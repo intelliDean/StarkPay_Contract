@@ -304,26 +304,6 @@ pub mod StarkPay {
            let invoice: Invoice = self.to_pay_invoices.entry(email).entry(invoice_id).read();
 
            self.invoice_dto(invoice)
-
-            //let invoice_option = Option::Some(self.to_pay_invoices.entry(email).entry(invoice_id).read());
-    
-             //if invoice_option.is_some() {
-              //  invoice_option
-           // } else {
-             //   Option::None
-            //}
-
-
-           // match invoice_option {
-             //   Option::Some(invoice) => Result::Ok(invoice),
-               // Option::None => Result::Err('Invoice not found'),
-           // }
-
-           // if let Option::Some(invoice) = invoice_option {
-             //   Result::Ok(invoice)
-          //  } else {
-            //    Result::Err('Invoice not found')
-           // }
         }
 
         fn get_all_payer_invoices(self: @ContractState, email: felt252) -> Array<InvoiceDTO> {
@@ -502,4 +482,25 @@ pub mod StarkPay {
     }
 }
 
+// deployed contract address
 // https://sepolia.voyager.online/contract/0x0656a4f76d28aed8bc1543e3a06017d045e41556fc52803e7e2e3ede067e0549
+
+ //let invoice_option = Option::Some(self.to_pay_invoices.entry(email).entry(invoice_id).read());
+    
+             //if invoice_option.is_some() {
+              //  invoice_option
+           // } else {
+             //   Option::None
+            //}
+
+
+           // match invoice_option {
+             //   Option::Some(invoice) => Result::Ok(invoice),
+               // Option::None => Result::Err('Invoice not found'),
+           // }
+
+           // if let Option::Some(invoice) = invoice_option {
+             //   Result::Ok(invoice)
+          //  } else {
+            //    Result::Err('Invoice not found')
+           // }
