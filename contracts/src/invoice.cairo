@@ -1,6 +1,9 @@
 use core::starknet::ContractAddress;
 use starknet::OptionTrait;
 
+//TODO: To write the private invoice function
+// generate hash, use the hash as key to the IPFS CID, send the hash to the payer, 
+// he uses the hash to fetch the cid and use the CID to fetch the private invoice data from IPFS
   
 #[starknet::interface]
 pub trait StarkPayTrait<T> {
