@@ -12,6 +12,8 @@ pub trait StarkPayTrait<T> {
 
     fn is_exist(self: @T, address: ContractAddress) -> bool;
 
+    fn get_user(self: @T, address: ContractAddress) -> StarkPay::User;
+
     fn create_invoice(
             ref self: T,
             invoice_id: felt252,
@@ -21,6 +23,15 @@ pub trait StarkPayTrait<T> {
             recipient_mail: felt252,
             due_date: u64,
         ) -> (felt252, ContractAddress); 
+
+    fn private_invoice(
+        ref self: T, 
+        recipient_mail: felt252, 
+        amount: felt252,
+        cid: felt252,
+    );
+
+    fn get_private_invoice_cid(self: @T, invoice_hash: felt252) -> felt252;
 
     fn get_invoice(
         self: @T, 
@@ -127,6 +138,9 @@ pub mod StarkPay {
         //user info
         users: Map<ContractAddress, User>,
 
+        // private invoice
+        private_invoices: Map<felt252, felt252>,
+
         // all invoices
         all_invoices_count: u64,
         all_invoices: Map<u64, Invoice>, 
@@ -149,6 +163,7 @@ pub mod StarkPay {
         InvoiceCreated: InvoiceCreated,
         InvoicePaid: InvoicePaid,
         AccountCreated: AccountCreated,
+        PrivateInvoice: PrivateInvoice,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -176,6 +191,12 @@ pub mod StarkPay {
         #[key]
       invoice_id: felt252,
       message: felt252
+    }
+
+    #[derive(Drop, starknet::Event)]
+    struct PrivateInvoice {
+        #[key]
+      invoice_hash: felt252
     }
 
     
@@ -212,6 +233,10 @@ pub mod StarkPay {
             }
         }
 
+        fn get_user(self: @ContractState, address: ContractAddress) -> User {
+            self.users.entry(address).read()
+        }
+
         fn create_invoice(
             ref self: ContractState,
             invoice_id: felt252,
@@ -224,7 +249,9 @@ pub mod StarkPay {
             
             let caller = get_caller_address();
 
-            let new_invoice: Invoice = self._create_invoice(caller, invoice_id, amount, currency, recipient_mail, due_date, description);  
+            let new_invoice: Invoice = self._create_invoice(
+                caller, invoice_id, amount, currency, recipient_mail, due_date, description
+            );  
 
             //save invoice
             self.invoices.entry(caller).entry(invoice_id).write(new_invoice.clone());
@@ -235,8 +262,6 @@ pub mod StarkPay {
 
            //payer invoices
            self.to_pay_invoices.entry(recipient_mail).entry(invoice_id).write(new_invoice.clone());
-
-           
 
            self.payer_invoices.entry(recipient_mail).entry(new_invoice.counts.payer_count).write(new_invoice.clone());
            self.payer_count.entry(recipient_mail).write(new_invoice.counts.payer_count);
@@ -254,6 +279,27 @@ pub mod StarkPay {
             (invoice_id, caller)
         }
 
+        fn private_invoice(ref self: ContractState, recipient_mail: felt252, amount: felt252, cid: felt252,) {
+
+            let invoice_hash = PedersenTrait::new(0)
+                .update(get_caller_address().into())
+                .update(get_block_timestamp().into())
+                .update(cid)
+                .update(6)
+                .finalize();
+
+            self.private_invoices.entry(invoice_hash).write(cid);
+
+            self.emit(PrivateInvoice{
+                invoice_hash
+            });
+        }
+
+        fn get_private_invoice_cid(self: @ContractState, invoice_hash: felt252) -> felt252 {
+             
+            self.private_invoices.entry(invoice_hash).read()
+        }
+
         fn get_init(self: @ContractState, _user: ContractAddress) -> Array<InvoiceDTO> {
 
             let user: User = self.users.entry(_user).read();
@@ -264,15 +310,19 @@ pub mod StarkPay {
 
             for index in 0..count {
 
-                let mut invoice: Invoice = self.invoices_of.entry(user.address).entry(index + 1).read();
-
-                init_invoices.append(self.invoice_dto(invoice));
+                init_invoices.append(
+                    self.invoice_dto(
+                        self.invoices_of.entry(user.address).entry(index + 1).read()
+                    )
+                );
             };
 
             let p_count = self.payer_count.entry(user.email).read();
 
             for index in 0..p_count {
-                init_invoices.append(self.invoice_dto(self.payer_invoices.entry(user.email).entry(index + 1).read()));
+                init_invoices.append(
+                    self.invoice_dto(self.payer_invoices.entry(user.email).entry(index + 1).read())
+                );
             };
 
             init_invoices
@@ -280,9 +330,9 @@ pub mod StarkPay {
 
         fn get_invoice(self: @ContractState, owner: ContractAddress, invoice_id: felt252) -> InvoiceDTO {
 
-            let invoice: Invoice = self.invoices.entry(owner).entry(invoice_id).read();
-
-            self.invoice_dto(invoice)
+            self.invoice_dto(
+                self.invoices.entry(owner).entry(invoice_id).read()
+            )
         }
 
         fn get_invoices_of( self: @ContractState,  owner: ContractAddress) -> Array<InvoiceDTO> {
@@ -291,12 +341,13 @@ pub mod StarkPay {
 
             let mut invoices:Array<InvoiceDTO> = ArrayTrait::new();
 
-
             for index in 0..count {
 
-                let mut invoice: Invoice = self.invoices_of.entry(owner).entry(index + 1).read();
-
-                invoices.append(self.invoice_dto(invoice));
+                invoices.append(
+                    self.invoice_dto(
+                     self.invoices_of.entry(owner).entry(index + 1).read()   
+                    )
+                );
             };
 
             invoices
@@ -304,9 +355,9 @@ pub mod StarkPay {
 
         fn get_payer_invoice(self: @ContractState, email: felt252, invoice_id: felt252) -> InvoiceDTO{
 
-           let invoice: Invoice = self.to_pay_invoices.entry(email).entry(invoice_id).read();
-
-           self.invoice_dto(invoice)
+           self.invoice_dto(
+                self.to_pay_invoices.entry(email).entry(invoice_id).read()
+           )
         }
 
         fn get_all_payer_invoices(self: @ContractState, email: felt252) -> Array<InvoiceDTO> {
@@ -316,7 +367,12 @@ pub mod StarkPay {
             let mut p_invoices: Array<InvoiceDTO> = ArrayTrait::new();
 
             for index in 0..p_count {
-                p_invoices.append(self.invoice_dto(self.payer_invoices.entry(email).entry(index + 1).read()));
+
+                p_invoices.append(
+                    self.invoice_dto(
+                        self.payer_invoices.entry(email).entry(index + 1).read()
+                    )
+                );
             };
 
             p_invoices
@@ -366,7 +422,12 @@ pub mod StarkPay {
             let mut _all_invoices: Array<InvoiceDTO> = ArrayTrait::new();
 
             for index in 0..all_counts {
-                _all_invoices.append(self.invoice_dto(self.all_invoices.entry(index + 1).read()));
+
+                _all_invoices.append(
+                    self.invoice_dto(
+                        self.all_invoices.entry(index + 1).read()
+                    )
+                );
             };
 
             _all_invoices
@@ -485,25 +546,4 @@ pub mod StarkPay {
     }
 }
 
-// deployed contract address
-// https://sepolia.voyager.online/contract/0x0656a4f76d28aed8bc1543e3a06017d045e41556fc52803e7e2e3ede067e0549
-
- //let invoice_option = Option::Some(self.to_pay_invoices.entry(email).entry(invoice_id).read());
-    
-             //if invoice_option.is_some() {
-              //  invoice_option
-           // } else {
-             //   Option::None
-            //}
-
-
-           // match invoice_option {
-             //   Option::Some(invoice) => Result::Ok(invoice),
-               // Option::None => Result::Err('Invoice not found'),
-           // }
-
-           // if let Option::Some(invoice) = invoice_option {
-             //   Result::Ok(invoice)
-          //  } else {
-            //    Result::Err('Invoice not found')
-           // }
+//https://sepolia.voyager.online/contract/0x00ad671719dd9c4f094c8efccecc3794ae0bd81c6a9ff2560cd02748ab492f0d#transactions
